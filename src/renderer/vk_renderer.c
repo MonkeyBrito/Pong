@@ -1,7 +1,8 @@
-#include <stdio.h>
-#include <vulkan/vulkan.h>
+#include "vk_renderer.h"
 
-int main(void) {
+#include <stdio.h>
+
+bool vk_init(VkContext *vk_context) {
     VkApplicationInfo app_info = {0};
     app_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
     app_info.pApplicationName = "Pong";
@@ -11,11 +12,11 @@ int main(void) {
     instance_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
     instance_info.pApplicationInfo = &app_info;
 
-    VkInstance instance;
-    VkResult result = vkCreateInstance(&instance_info, VK_NULL_HANDLE, &instance);
+    VkResult result = vkCreateInstance(&instance_info, VK_NULL_HANDLE, &vk_context->instance);
     if (result == VK_SUCCESS) {
         printf("Successfully create vulkan instance!");
+        return true;
     }
 
-    return 0;
+    return false;
 }
