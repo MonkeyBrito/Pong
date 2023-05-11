@@ -21,7 +21,7 @@ OBJDIR?=obj
 SRCDIR?=src
 
 # Shader Directory.
-SHADIR?=shaders
+SHADIR?=assets/shaders
 
 # Get Source Files.
 SOURCES:=$(call rwildcard,$(SRCDIR)/,*.c)
