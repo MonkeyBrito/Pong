@@ -2,13 +2,14 @@
 
 #include <stdbool.h>
 #include <vulkan/vulkan.h>
+#include "vk_types.h"
 
 typedef struct VkContext {
     VkExtent2D screen_size;
 
     VkInstance instance;
-    VkSurfaceKHR surface;
     VkDebugUtilsMessengerEXT debug_messenger;
+    VkSurfaceKHR surface;
     VkSurfaceFormatKHR surface_format;
     VkPhysicalDevice gpu;
     VkDevice device;
@@ -16,12 +17,24 @@ typedef struct VkContext {
     VkSwapchainKHR swapchain;
     VkRenderPass render_pass;
     VkCommandPool command_pool;
+    VkCommandBuffer cmd;
 
+    // TODO: will be inside an array
+    Image image;
+    Buffer staging_buffer;
+
+    VkDescriptorPool descriptor_pool;
+
+    // TODO: We will abstract this later
+    VkSampler sampler;
+    VkDescriptorSet descriptor_set;
+    VkDescriptorSetLayout descriptor_set_layout;
     VkPipelineLayout pipeline_layout;
     VkPipeline pipeline;
 
     VkSemaphore acquire_semaphore;
     VkSemaphore submit_semaphore;
+    VkFence image_available_fence;
 
     uint32_t swapchain_image_count;
     // TODO: Suballocation from Main Allocation
