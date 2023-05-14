@@ -84,7 +84,7 @@ Buffer vk_allocate_buffer(
 
     VkMemoryAllocateInfo alloc_info = {0};
     alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    alloc_info.allocationSize = buffer.size;
+    alloc_info.allocationSize = mem_requirements.size;
     alloc_info.memoryTypeIndex = vk_get_memory_type_index(
         gpu,
         mem_requirements,
@@ -95,7 +95,7 @@ Buffer vk_allocate_buffer(
     VK_CHECK(vkBindBufferMemory(device, buffer.buffer, buffer.memory, 0));
 
     if (mem_props & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
-        VK_CHECK(vkMapMemory(device, buffer.memory, 0, buffer.size, 0, &buffer.data));
+        VK_CHECK(vkMapMemory(device, buffer.memory, 0, mem_requirements.size, 0, &buffer.data));
     }
 
     return buffer;
@@ -111,4 +111,26 @@ void vk_copy_to_buffer(Buffer *buffer, void *data, uint32_t size) {
     } else {
         // TODO: Implement, copy data using command buffer
     }
+}
+
+VkWriteDescriptorSet write_set(
+    VkDescriptorSet descriptor_set,
+    VkDescriptorType type,
+    DescriptorInfo *descriptor_info,
+    uint32_t binding_index,
+    uint32_t count
+) {
+    VkWriteDescriptorSet write = {
+        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .pNext = VK_NULL_HANDLE,
+        .dstSet = descriptor_set,
+        .dstBinding = binding_index,
+        .dstArrayElement = 0,
+        .descriptorCount = count,
+        .descriptorType = type,
+        .pImageInfo = &descriptor_info->image_info,
+        .pBufferInfo = &descriptor_info->buffer_info,
+        .pTexelBufferView = NULL
+    };
+    return write;
 }

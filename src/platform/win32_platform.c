@@ -1,11 +1,13 @@
-#include <windows.h>
-
-#include "../defines.h"
 #include "../platform.h"
-
-#include "../renderer/vk_renderer.h"
-// #include <stdio.h>
+#include "../defines.h"
 #include "../logger.h"
+
+// This is the rendering layer
+#include "../game/game.h"
+// This is the rendering layer
+#include "../renderer/vk_renderer.h"
+
+#include <windows.h>
 #include <stdlib.h>
 
 global_variable bool running = true;
@@ -63,8 +65,15 @@ void platform_update_window(HWND window) {
 
 int main(void) {
     VkContext vk_context = {0};
+    GameState game_state = {0};
+
     if (!platform_create_window()) {
-        CAKEZ_FATAL("Failed to open a window");
+        CAKEZ_FATAL("Failed to open a Window");
+        return -1;
+    }
+
+    if (!init_game(&game_state)) {
+        CAKEZ_FATAL("Failed to initialize Game");
         return -1;
     }
 
@@ -75,7 +84,8 @@ int main(void) {
 
     while (running) {
         platform_update_window(window);
-        if (!vk_render(&vk_context)) {
+        update_game(&game_state);
+        if (!vk_render(&vk_context, &game_state)) {
             CAKEZ_FATAL("Failed to render Vulkan");
             return -1;
         }

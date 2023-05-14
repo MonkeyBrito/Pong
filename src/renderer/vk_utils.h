@@ -20,3 +20,11 @@ Buffer vk_allocate_buffer(
 );
 
 void vk_copy_to_buffer(Buffer *buffer, void *data, uint32_t size);
+
+VkWriteDescriptorSet write_set(
+    VkDescriptorSet descriptor_set,
+    VkDescriptorType type,
+    DescriptorInfo *descriptor_info,
+    uint32_t binding_index,
+    uint32_t count
+);

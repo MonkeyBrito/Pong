@@ -269,16 +269,34 @@ bool vk_init(VkContext *vk_context, void *window) {
 
     // Create Descriptor Set Layouts
     {
-        VkDescriptorSetLayoutBinding binding = {0};
-        binding.binding = 0;
-        binding.descriptorCount = 1;
-        binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+        VkDescriptorSetLayoutBinding binding0 = {0};
+        binding0.binding = 0;
+        binding0.descriptorCount = 1;
+        binding0.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        binding0.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+        VkDescriptorSetLayoutBinding binding1 = {0};
+        binding1.binding = 1;
+        binding1.descriptorCount = 1;
+        binding1.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        binding1.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+        VkDescriptorSetLayoutBinding binding2 = {0};
+        binding2.binding = 2;
+        binding2.descriptorCount = 1;
+        binding2.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        binding2.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+        VkDescriptorSetLayoutBinding bindings[] = {
+            binding0,
+            binding1,
+            binding2
+        };
 
         VkDescriptorSetLayoutCreateInfo layout_info = {0};
         layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        layout_info.bindingCount = 1;
-        layout_info.pBindings = &binding;
+        layout_info.bindingCount = ARRAY_SIZE(bindings);
+        layout_info.pBindings = bindings;
 
         VK_CHECK(vkCreateDescriptorSetLayout(vk_context->device, &layout_info, VK_NULL_HANDLE, &vk_context->descriptor_set_layout));
     }
@@ -347,7 +365,7 @@ bool vk_init(VkContext *vk_context, void *window) {
 
         VkPipelineRasterizationStateCreateInfo rasterization_state = {0};
         rasterization_state.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-        rasterization_state.frontFace = VK_FRONT_FACE_CLOCKWISE;
+        rasterization_state.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
         rasterization_state.cullMode = VK_CULL_MODE_BACK_BIT;
         rasterization_state.polygonMode = VK_POLYGON_MODE_FILL;
         rasterization_state.lineWidth = 1.0f;
@@ -513,17 +531,62 @@ bool vk_init(VkContext *vk_context, void *window) {
         VK_CHECK(vkCreateSampler(vk_context->device, &sampler_info, VK_NULL_HANDLE, &vk_context->sampler));
     }
 
+    // Create transform buffer
+    {
+        vk_context->transform_storage_buffer = vk_allocate_buffer(
+            vk_context->device,
+            vk_context->gpu,
+            sizeof(Transform) * MAX_ENTITIES,
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
+        );
+    }
+
+    // Create Global Uniform Buffer Object
+    {
+        vk_context->global_UBO = vk_allocate_buffer(
+            vk_context->device,
+            vk_context->gpu,
+            sizeof(GlobalData),
+            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
+        );
+        GlobalData global_data = {
+            (int)vk_context->screen_size.width,
+            (int)vk_context->screen_size.height
+        };
+        vk_copy_to_buffer(&vk_context->global_UBO, &global_data, sizeof(global_data));
+    }
+
+    // Create index buffer
+    {
+        vk_context->index_buffer = vk_allocate_buffer(
+            vk_context->device,
+            vk_context->gpu,
+            sizeof(uint32_t) * 6,
+            VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
+        );
+        // Copy indices to the buffer
+        {
+            uint32_t indices[] = {0, 1, 2, 2, 3, 0};
+            vk_copy_to_buffer(&vk_context->index_buffer, indices, sizeof(uint32_t) * 6);
+        }
+    }
+
     // Create Descriptor Pool
     {
-        VkDescriptorPoolSize pool_size = {0};
-        pool_size.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        pool_size.descriptorCount = 1;
+        VkDescriptorPoolSize pool_sizes[] = {
+            {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1},
+            {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1}
+        };
 
         VkDescriptorPoolCreateInfo pool_info;
         pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         pool_info.maxSets = 1;
-        pool_info.poolSizeCount = 1;
-        pool_info.pPoolSizes = &pool_size;
+        pool_info.poolSizeCount = ARRAY_SIZE(pool_sizes);
+        pool_info.pPoolSizes = pool_sizes;
         VK_CHECK(vkCreateDescriptorPool(vk_context->device, &pool_info, VK_NULL_HANDLE, &vk_context->descriptor_pool));
     }
 
@@ -539,28 +602,32 @@ bool vk_init(VkContext *vk_context, void *window) {
 
     // Update descriptor set
     {
-        VkDescriptorImageInfo image_info = {0};
-        image_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        image_info.imageView = vk_context->image.view;
-        image_info.sampler = vk_context->sampler;
+        DescriptorInfo descriptor_infos[] = {
+            {{.buffer_info = {.buffer = vk_context->global_UBO.buffer, .offset = 0, .range = VK_WHOLE_SIZE}}},
+            {{.buffer_info = {.buffer = vk_context->transform_storage_buffer.buffer, .offset = 0, .range = VK_WHOLE_SIZE}}},
+            {{.image_info = {.sampler = vk_context->sampler, .imageView = vk_context->image.view, .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL}}}
+        };
 
-        VkWriteDescriptorSet write = {0};
-        write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        write.dstSet = vk_context->descriptor_set;
-        write.pImageInfo = &image_info;
-        write.dstBinding = 0;
-        write.descriptorCount = 1;
-        write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        VkWriteDescriptorSet writes[] = {
+            write_set(vk_context->descriptor_set, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, &descriptor_infos[0], 0, 1),
+            write_set(vk_context->descriptor_set, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &descriptor_infos[1], 1, 1),
+            write_set(vk_context->descriptor_set, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &descriptor_infos[2], 2, 1)
+        };
 
-        vkUpdateDescriptorSets(vk_context->device, 1, &write, 0, 0);
+        vkUpdateDescriptorSets(vk_context->device, ARRAY_SIZE(writes), writes, 0, VK_NULL_HANDLE);
     }
 
     return true;
 }
 
-bool vk_render(VkContext *vk_context) {
+bool vk_render(VkContext *vk_context, GameState *game_state) {
     VK_CHECK(vkWaitForFences(vk_context->device, 1, &vk_context->image_available_fence, VK_TRUE, UINT64_MAX));
     VK_CHECK(vkResetFences(vk_context->device, 1, &vk_context->image_available_fence));
+
+    // Copy transforms to the buffer
+    {
+        vk_copy_to_buffer(&vk_context->transform_storage_buffer, &game_state->entities, sizeof(Transform) * game_state->entity_count);
+    }
 
     uint32_t image_index = 0;
     VK_CHECK(vkAcquireNextImageKHR(vk_context->device, vk_context->swapchain, UINT64_MAX, vk_context->acquire_semaphore, VK_NULL_HANDLE, &image_index));
@@ -600,8 +667,11 @@ bool vk_render(VkContext *vk_context) {
 
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, vk_context->pipeline_layout, 0, 1, &vk_context->descriptor_set, 0, VK_NULL_HANDLE);
 
+        vkCmdBindIndexBuffer(cmd, vk_context->index_buffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, vk_context->pipeline);
-        vkCmdDraw(cmd, 6, 1, 0, 0);
+        // vkCmdDraw(cmd, 6, 1, 0, 0);
+        vkCmdDrawIndexed(cmd, 6, game_state->entity_count, 0, 0, 0);
     }
 
     vkCmdEndRenderPass(cmd);

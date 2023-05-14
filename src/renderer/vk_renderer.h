@@ -2,7 +2,9 @@
 
 #include <stdbool.h>
 #include <vulkan/vulkan.h>
+#include "shared_render_types.h"
 #include "vk_types.h"
+#include "../game/game.h"
 
 typedef struct VkContext {
     VkExtent2D screen_size;
@@ -21,7 +23,11 @@ typedef struct VkContext {
 
     // TODO: will be inside an array
     Image image;
+
     Buffer staging_buffer;
+    Buffer transform_storage_buffer;
+    Buffer global_UBO;
+    Buffer index_buffer;
 
     VkDescriptorPool descriptor_pool;
 
@@ -46,4 +52,4 @@ typedef struct VkContext {
 } VkContext;
 
 bool vk_init(VkContext *vk_context, void *window);
-bool vk_render(VkContext *vk_context);
+bool vk_render(VkContext *vk_context, GameState *game_state);

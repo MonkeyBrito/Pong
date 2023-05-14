@@ -24,3 +24,10 @@ typedef struct Buffer {
     uint32_t size;
     void *data;
 } Buffer;
+
+typedef struct DescriptorInfo {
+    union {
+        VkDescriptorBufferInfo buffer_info;
+        VkDescriptorImageInfo image_info;
+    };
+} DescriptorInfo;
