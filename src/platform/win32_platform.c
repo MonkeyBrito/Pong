@@ -4,7 +4,8 @@
 #include "../platform.h"
 
 #include "../renderer/vk_renderer.h"
-#include <stdio.h>
+// #include <stdio.h>
+#include "../logger.h"
 #include <stdlib.h>
 
 global_variable bool running = true;
@@ -63,16 +64,19 @@ void platform_update_window(HWND window) {
 int main(void) {
     VkContext vk_context = {0};
     if (!platform_create_window()) {
+        CAKEZ_FATAL("Failed to open a window");
         return -1;
     }
 
     if (!vk_init(&vk_context, window)) {
+        CAKEZ_FATAL("Failed to initialize Vulkan");
         return -1;
     }
 
     while (running) {
         platform_update_window(window);
         if (!vk_render(&vk_context)) {
+            CAKEZ_FATAL("Failed to render Vulkan");
             return -1;
         }
     }
@@ -106,20 +110,58 @@ const char *platform_read_file(const char *path, uint32_t *lenght) {
             if (ReadFile(file, result, *lenght, &bytes_read, NULL)) {
                 // Success
             } else {
-                // TODO: Assert and error checking
-                printf("Failed reading file: %s\n", path);
+                CAKEZ_ASSERT(0, "Failed to read file: %s", path);
+                CAKEZ_ERROR("Failed to read file: %s", path);
             }
         } else {
-            // TODO: Assert
-            printf("Failed getting size of file: %s\n", path);
+            CAKEZ_ASSERT(0, "Failed to get size of file: %s", path);
+            CAKEZ_ERROR("Failed to get size of file: %s", path);
         }
 
         CloseHandle(file);
 
     } else {
-        // TODO: Assert
-        printf("Failed opening file: %s\n", path);
+        CAKEZ_ASSERT(0, "Failed to open file: %s", path);
+        CAKEZ_ERROR("Failed to open file: %s", path);
     }
 
     return result;
+}
+
+void platform_log(const char *msg, TextColor color) {
+    HANDLE console_handle = GetStdHandle(STD_OUTPUT_HANDLE);
+
+    WORD color_bits = 0;
+
+    switch (color) {
+        case TEXT_COLOR_WHITE:
+        color_bits = FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE;
+        break;
+
+        case TEXT_COLOR_GREEN:
+        color_bits = FOREGROUND_GREEN;
+        break;
+
+        case TEXT_COLOR_YELLOW:
+        color_bits = FOREGROUND_RED | FOREGROUND_GREEN;
+        break;
+
+        case TEXT_COLOR_RED:
+        color_bits = FOREGROUND_RED;
+        break;
+
+        case TEXT_COLOR_LIGHT_RED:
+        color_bits = FOREGROUND_RED | FOREGROUND_INTENSITY;
+        break;
+    }
+
+    SetConsoleTextAttribute(console_handle, color_bits);
+
+    #ifdef _DEBUG
+        OutputDebugStringA(msg);
+    #endif
+
+    WriteConsoleA(console_handle, msg, (DWORD)strlen(msg), NULL, NULL);
+
+    SetConsoleTextAttribute(console_handle, FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
 }

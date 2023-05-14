@@ -1,21 +1,14 @@
 #include "vk_renderer.h"
 
 #include "../dds_structs.h"
+#include "../logger.h"
 #include "../platform.h"
+
+#include "vk_types.h"
+#include "vk_utils.h"
+
 #include <windows.h>
 #include <vulkan/vulkan_win32.h>
-#include <stdio.h>
-#include <intrin.h> // __debugbreak
-
-#define ARRAY_SIZE(arr) sizeof((arr))/sizeof((arr[0]))
-
-#define VK_CHECK(result)                      \
-    if (result != VK_SUCCESS) {               \
-        printf("Vulkan Error: %d\n", result); \
-        printf("%s\n", #result);              \
-        __debugbreak();                       \
-        return false;                         \
-    }
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL vk_debug_callback(
     VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
@@ -26,7 +19,8 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL vk_debug_callback(
     messageSeverity = messageSeverity;
     messageTypes = messageTypes;
     pUserData = pUserData;
-    printf("Validation Error: %s", pCallbackData->pMessage);
+    CAKEZ_ERROR(pCallbackData->pMessage);
+    CAKEZ_ASSERT(0, pCallbackData->pMessage);
     return false;
 }
 
@@ -407,78 +401,31 @@ bool vk_init(VkContext *vk_context, void *window) {
 
     // Staging Buffer
     {
-        VkBufferCreateInfo buffer_info = {0};
-        buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        buffer_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-        buffer_info.size = 1024 * 1024; // (1MB) MAX IMAGE SIZE
-        VK_CHECK(vkCreateBuffer(vk_context->device, &buffer_info, VK_NULL_HANDLE, &vk_context->staging_buffer.buffer));
-
-        VkMemoryRequirements mem_requirements;
-        vkGetBufferMemoryRequirements(vk_context->device, vk_context->staging_buffer.buffer, &mem_requirements);
-
-        VkPhysicalDeviceMemoryProperties gpu_mem_props;
-        vkGetPhysicalDeviceMemoryProperties(vk_context->gpu, &gpu_mem_props);
-
-        VkMemoryAllocateInfo alloc_info = {0};
-        for (uint32_t i = 0; i <gpu_mem_props.memoryTypeCount; i++) {
-            if (mem_requirements.memoryTypeBits & (1 << i) && (gpu_mem_props.memoryTypes[i].propertyFlags &
-                (VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)) ==
-                (VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT))
-            {
-                alloc_info.memoryTypeIndex = i;
-            }
-        }
-        alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        alloc_info.allocationSize = buffer_info.size;
-        VK_CHECK(vkAllocateMemory(vk_context->device, &alloc_info, VK_NULL_HANDLE, &vk_context->staging_buffer.memory));
-        VK_CHECK(vkBindBufferMemory(vk_context->device, vk_context->staging_buffer.buffer, vk_context->staging_buffer.memory, 0));
-        VK_CHECK(vkMapMemory(vk_context->device, vk_context->staging_buffer.memory, 0, buffer_info.size, 0, &vk_context->staging_buffer.data));
+        vk_context->staging_buffer = vk_allocate_buffer(
+            vk_context->device,
+            vk_context->gpu,
+            MB(1),
+            VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
+        );
     }
 
     // Create Image
     {
         uint32_t file_size;
-        DDSFile *data = (DDSFile *)platform_read_file("assets/textures/cakez.DDS", &file_size);
+        DDSFile *file = (DDSFile *)platform_read_file("assets/textures/cakez.DDS", &file_size);
+        uint32_t texture_size = file->header.width * file->header.height * 4;
 
-        uint32_t texture_size = data->header.width * data->header.height * 4;
-        memcpy(vk_context->staging_buffer.data, &data->data_begin, texture_size);
+        vk_copy_to_buffer(&vk_context->staging_buffer, &file->data_begin, texture_size);
 
         // TODO: Assertions
-
-        VkImageCreateInfo image_info = {0};
-        image_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-        image_info.mipLevels = 1;
-        image_info.arrayLayers = 1;
-        image_info.imageType = VK_IMAGE_TYPE_2D;
-        image_info.format = VK_FORMAT_R8G8B8A8_UNORM;
-        image_info.extent.width = data->header.width;
-        image_info.extent.height = data->header.height;
-        image_info.extent.depth = 1;
-        image_info.samples = VK_SAMPLE_COUNT_1_BIT;
-        image_info.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-        // image_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-
-        VK_CHECK(vkCreateImage(vk_context->device, &image_info, VK_NULL_HANDLE, &vk_context->image.image));
-
-        VkMemoryRequirements mem_requirements;
-        vkGetImageMemoryRequirements(vk_context->device, vk_context->image.image, &mem_requirements);
-
-        VkPhysicalDeviceMemoryProperties gpu_mem_props;
-        vkGetPhysicalDeviceMemoryProperties(vk_context->gpu, &gpu_mem_props);
-
-        VkMemoryAllocateInfo alloc_info = {0};
-        for (uint32_t i = 0; i <gpu_mem_props.memoryTypeCount; i++) {
-            if (mem_requirements.memoryTypeBits & (1 << i) &&
-                (gpu_mem_props.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) == VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
-            {
-                alloc_info.memoryTypeIndex = i;
-            }
-        }
-
-        alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        alloc_info.allocationSize = texture_size;
-        VK_CHECK(vkAllocateMemory(vk_context->device, &alloc_info, VK_NULL_HANDLE, &vk_context->image.memory));
-        VK_CHECK(vkBindImageMemory(vk_context->device, vk_context->image.image, vk_context->image.memory, 0));
+        vk_context->image = vk_allocate_image(
+            vk_context->device,
+            vk_context->gpu,
+            file->header.width,
+            file->header.height,
+            VK_FORMAT_R8G8B8A8_UNORM
+        );
 
         VkCommandBuffer cmd;
         VkCommandBufferAllocateInfo cmd_alloc_info = {0};
@@ -511,8 +458,8 @@ bool vk_init(VkContext *vk_context, void *window) {
             1, &image_memory_barrier);
 
         VkBufferImageCopy copy_region = {0};
-        copy_region.imageExtent.width = data->header.width;
-        copy_region.imageExtent.height = data->header.height;
+        copy_region.imageExtent.width = file->header.width;
+        copy_region.imageExtent.height = file->header.height;
         copy_region.imageExtent.depth = 1;
         copy_region.imageSubresource.layerCount = 1;
         copy_region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
